@@ -1,0 +1,26 @@
+{
+  "name": "intentguard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IntentGuard — the bouncer for NEAR Intents swaps. Vets the destination token (honeypot/tax/owner/liquidity) before an intent executes and blocks the swap if it is a trap. Built for NEAR HACKATHON 2026, Unstoppable DeFi track.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "demo": "tsx src/demo.ts",
+    "gate": "tsx src/cli.ts gate",
+    "vet": "tsx src/cli.ts vet",
+    "serve": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IntentGuard — the bouncer for NEAR Intents swaps</title>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --text:#e8eaf0; --muted:#9aa3b2;
+    --green:#2fbf71; --amber:#e0a63c; --red:#e5484d; --blue:#5aa9ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:26px; margin:0 0 4px; }
+  h1 span { color:var(--blue); }
+  .sub { color:var(--muted); margin:0 0 8px; }
+  .badge { display:inline-block; font-size:13px; padding:2px 10px; border:1px solid var(--line);
+    border-radius:999px; color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin:16px 0; }
+  label { display:block; font-size:13px; color:var(--muted); margin:12px 0 4px; }
+  input, select { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line);
+    background:#0f1115; color:var(--text); font-size:15px; }
+  input.mono { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:14px; }
+  .row { display:flex; gap:12px; } .row > div { flex:1; }
+  button { cursor:pointer; border:0; border-radius:8px; padding:12px 18px; font-size:15px; font-weight:600; }
+  button.primary { background:var(--blue); color:#06121f; width:100%; margin-top:16px; }
+  button.primary:disabled { opacity:.55; cursor:wait; }
+  button.case { background:#222733; color:var(--text); border:1px solid var(--line); font-weight:500;
+    padding:8px 12px; font-size:14px; margin:4px 6px 4px 0; }
+  button.case:hover { border-color:var(--blue); }
+  .decision { font-size:22px; font-weight:700; padding:6px 0 2px; }
+  .decision.blocked { color:var(--red); } .decision.allowed { color:var(--green); }
+  .decision.warning { color:var(--amber); }
+  .scorebar { height:10px; border-radius:999px; background:#222733; overflow:hidden; margin:10px 0 4px; }
+  .scorebar > div { height:100%; }
+  .scorebar .fill-safe { background:var(--green); } .scorebar .fill-risky { background:var(--amber); }
+  .scorebar .fill-block { background:var(--red); }
+  .score-line { color:var(--muted); font-size:14px; }
+  .risk { border-left:3px solid var(--muted); padding:6px 10px; margin:8px 0; background:#0f1115; border-radius:0 8px 8px 0; }
+  .risk.block { border-color:var(--red); } .risk.warn { border-color:var(--amber); } .risk.info { border-color:var(--blue); }
+  .risk code { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; color:var(--muted); }
+  .quote { background:#0f1115; border:1px solid var(--line); border-radius:8px; padding:12px; margin-top:12px; }
+  .quote b { font-size:18px; }
+  .hidden { display:none; }
+  .ack { margin-top:12px; font-size:14px; }
+  .ack input { width:auto; }
+  .error { color:var(--red); }
+  .muted { color:var(--muted); font-size:14px; }
+  .spinner { color:var(--muted); }
+  footer { color:var(--muted); font-size:13px; margin-top:24px; }
+  footer a { color:var(--blue); }
+</style>
+</head>
+<body>
+<main>
+  <h1>🛡️ Intent<span>Guard</span></h1>
+  <p class="sub">The bouncer for NEAR Intents swaps — vets the token you're about to buy
+    (honeypot, tax, owner, liquidity) and <b>blocks the swap if it's a trap</b>.</p>
+  <span class="badge">Dry quotes only · No wallet · No funds move · Built at NEAR HACKATHON 2026</span>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label for="chain">Destination chain</label>
+        <select id="chain">
+          <option value="base" selected>Base</option>
+          <option value="bsc">BNB Chain</option>
+          <option value="ethereum">Ethereum</option>
+          <option value="arbitrum">Arbitrum</option>
+        </select>
+      </div>
+      <div>
+        <label for="amount">Amount (NEAR)</label>
+        <input id="amount" type="text" value="0.1" inputmode="decimal">
+      </div>
+    </div>
+    <label for="token">Destination token contract (EVM address)</label>
+    <input id="token" class="mono" type="text" spellcheck="false"
+      placeholder="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" value="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913">
+    <button class="primary" id="check">Check this swap</button>
+
+    <p class="muted" style="margin:16px 0 0">Try the demo cases:</p>
+    <button class="case" data-chain="bsc" data-token="0xA167d46c9087a1D9ED15d8d08BFB5bA1BcA0C4aE">🐙 SQUID — honeypot, expect BLOCKED</button>
+    <button class="case" data-chain="base" data-token="0x98d0baa52b2d063e780de12f615f963fe8537553">⚠️ KAITO — thin liquidity, expect WARNING</button>
+    <button class="case" data-chain="base" data-token="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913">✅ USDC — clean, expect ALLOWED</button>
+  </div>
+
+  <div id="result" class="card hidden"></div>
+
+  <footer>
+    How it works: the gate vets the destination token <b>before</b> quoting.
+    BLOCK → swap refused, no quote fetched. RISKY → quote shown with the risks;
+    proceeding needs an explicit acknowledgment. SAFE → quote shown.
+    Quotes come from the NEAR Intents 1Click API with <code>dry: true</code> —
+    real solver pricing, no deposit address, nothing is ever executed here.
+    Source: <a href="https://github.com/Feymarl/MintGuard">MintGuard</a> is our other
+    NEAR Hackathon project (it vets contracts you <i>mint</i>; IntentGuard vets
+    tokens you <i>buy</i>).
+  </footer>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const resultEl = $("result");
+
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+function scoreClass(v) { return v === "SAFE" ? "fill-safe" : v === "RISKY" ? "fill-risky" : "fill-block"; }
+function decisionClass(d) { return d === "BLOCKED" ? "blocked" : d === "ALLOWED" ? "allowed" : "warning"; }
+
+function render(r) {
+  const v = r.verdict;
+  const risks = (v.risks || []).map((x) =>
+    `<div class="risk ${esc(x.severity)}"><code>${esc(x.code)}</code> — ${esc(x.message)}</div>`).join("")
+    || `<p class="muted">No risks found.</p>`;
+
+  let quoteHtml = "";
+  if (r.decision === "BLOCKED") {
+    quoteHtml = `<p class="muted">⛔ No quote fetched — the swap was refused before any solver auction ran.</p>`;
+  } else if (r.quote) {
+    const q = r.quote;
+    const body = `<div class="quote">Dry quote: <b>${esc(q.amountInFormatted)} NEAR → ${esc(q.amountOutFormatted)} ${esc(v.symbol || "")}</b> (~$${esc(q.amountOutUsd)})<br>
+      <span class="muted">Min out ${esc(q.minAmountOut)} · ~${esc(q.timeEstimateSeconds)}s · Deposit address: none (dry run — no funds can move)</span></div>`;
+    if (r.decision === "ALLOWED_WITH_WARNING") {
+      quoteHtml = `<label class="ack"><input type="checkbox" id="ack"> I understand the risks above and want to see the quote.</label>
+        <div id="quoteBox" class="hidden">${body}
+        <p class="muted">⚠️ This is a dry demo — there is no execution path in this app. A real swap would need your explicit approval first.</p></div>`;
+    } else {
+      quoteHtml = body;
+    }
+  }
+
+  resultEl.classList.remove("hidden");
+  resultEl.innerHTML = `
+    <div class="decision ${decisionClass(r.decision)}">${r.decision === "BLOCKED" ? "⛔ BLOCKED — swap refused" : r.decision === "ALLOWED" ? "✅ ALLOWED" : "⚠️ ALLOWED WITH WARNING"}</div>
+    <div class="scorebar"><div class="${scoreClass(v.verdict)}" style="width:${v.score}%"></div></div>
+    <div class="score-line">${esc(v.symbol || "Token")} — ${v.score}/100 (${esc(v.verdict)}) · ${esc(v.chain)} · ${v.verified ? "source verified" : "source NOT verified"} · top DEX liquidity ${v.topLiquidityUsd == null ? "—" : "$" + Number(v.topLiquidityUsd).toLocaleString()}</div>
+    <div style="margin-top:12px">${risks}</div>
+    ${quoteHtml}
+    <p class="muted" style="margin-top:12px">${esc(r.summary || "")}</p>`;
+
+  const ack = document.getElementById("ack");
+  if (ack) ack.addEventListener("change", () => {
+    document.getElementById("quoteBox").classList.toggle("hidden", !ack.checked);
+  });
+}
+
+async function checkSwap() {
+  const chain = $("chain").value;
+  const token = $("token").value.trim();
+  const amount = $("amount").value.trim();
+  const btn = $("check");
+  btn.disabled = true;
+  resultEl.classList.remove("hidden");
+  resultEl.innerHTML = `<p class="spinner">Vetting ${esc(token)} on ${esc(chain)}…</p>`;
+  try {
+    const res = await fetch("/api/gate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chain, token, amount }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    render(data);
+  } catch (e) {
+    resultEl.innerHTML = `<p class="error">Error: ${esc(e.message || e)}</p>
+      <p class="muted">Check the address and chain, then try again. (The demo server and the token APIs must be reachable.)</p>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$("check").addEventListener("click", checkSwap);
+document.querySelectorAll("button.case").forEach((b) => {
+  b.addEventListener("click", () => {
+    $("chain").value = b.dataset.chain;
+    $("token").value = b.dataset.token;
+    checkSwap();
+  });
+});
+</script>
+</body>
+</html>
